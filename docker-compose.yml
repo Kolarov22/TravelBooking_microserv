@@ -1,0 +1,81 @@
+services:
+  travel_db:
+    image: mariadb:latest
+    container_name: travel_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=travel_db
+    volumes:
+      - mariadb_volume:/var/lib/mysql
+    networks:
+      - travel_booking
+    ports:
+        - "3306:3306"
+
+  discovery-service:
+    image: discovery-service
+    container_name: discovery_service
+    build: ./discovery
+    ports:
+      - "8761:8761"
+    networks:
+        - travel_booking
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mariadb://travel_db:3306/travel_db
+    depends_on:
+      - travel_db
+  users-service:
+    image: users_service
+    container_name: users_service
+    build: ./users
+    ports:
+      - "8082:8082"
+    networks:
+        - travel_booking
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mariadb://travel_db:3306/travel_db
+      - eureka.client.service-url.defaultZone=http://discovery-service:8761/eureka
+
+    depends_on:
+      - travel_db
+      - discovery-service
+
+  reservation-service:
+    image: reservation_service
+    container_name: reservation_service
+    build: ./reservation
+    ports:
+      - "8081:8081"
+    networks:
+      - travel_booking
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mariadb://travel_db:3306/travel_db
+      - eureka.client.service-url.defaultZone=http://discovery-service:8761/eureka
+    depends_on:
+      - travel_db
+      - discovery-service
+
+  gateway-service:
+    image: gateway_service
+    container_name: gateway_service
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - travel_booking
+    environment:
+      - SPRING.CLOUD.GATEWAY.ROUTES[0].ID=user_service
+      - SPRING.CLOUD.GATEWAY.ROUTES[0].URI=http://users-service:8082
+      - SPRING.CLOUD.GATEWAY.ROUTES[0].PREDICATES[0]=Path=/users/**
+      - SPRING.CLOUD.GATEWAY.ROUTES[1].ID=reservation_service
+      - SPRING.CLOUD.GATEWAY.ROUTES[1].URI=http://reservation-service:8081
+      - SPRING.CLOUD.GATEWAY.ROUTES[1].PREDICATES[0]=Path=/reservations/**
+      - SPRING.CLOUD.GATEWAY.ROUTES[1].FILTERS[0]=AuthFilter
+    depends_on:
+        - discovery-service
+
+
+volumes:
+    mariadb_volume: {}
+networks:
+    travel_booking: {}
